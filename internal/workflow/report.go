@@ -12,21 +12,32 @@ type WorkbenchReport struct {
 }
 
 func (s *Service) Report(id string) (WorkbenchReport, error) {
-	s.reportMu.Lock()
-	report, cached := s.reportMap[id]
-	s.reportMu.Unlock()
-	if cached {
-		return report, nil
+	if cached, ok := s.cachedReport(id); ok {
+		return cached, nil
 	}
 	proj, e := s.Projection(id)
 	if e != nil {
 		return WorkbenchReport{}, e
 	}
-	report = WorkbenchReport{Package: proj, Checklist: domain.BuildChecklist(proj.Package), Summary: domain.FindingSummary(proj.Package)}
+	report := WorkbenchReport{Package: proj, Checklist: domain.BuildChecklist(proj.Package), Summary: domain.FindingSummary(proj.Package)}
 	s.reportMu.Lock()
 	s.reportMap[id] = report
 	s.reportMu.Unlock()
 	return report, nil
+}
+
+func (s *Service) cachedReport(id string) (WorkbenchReport, bool) {
+	s.reportMu.Lock()
+	report, cached := s.reportMap[id]
+	s.reportMu.Unlock()
+	if !cached {
+		return WorkbenchReport{}, false
+	}
+	current, ok := s.Store.Get(id)
+	if !ok || report.Package.Package == nil || current.Version != report.Package.Package.Version {
+		return WorkbenchReport{}, false
+	}
+	return report, true
 }
 func (s *Service) EnsureReady(id string) error {
 	p, ok := s.Store.Get(id)
