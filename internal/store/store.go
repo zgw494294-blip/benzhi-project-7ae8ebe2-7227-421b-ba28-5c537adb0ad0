@@ -159,17 +159,10 @@ func (s *Store) List() []*domain.SubtitlePackage {
 func (s *Store) Events(id string) []domain.AuditEvent {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var out []domain.AuditEvent
+	out := make([]domain.AuditEvent, 0, len(s.events))
 	for _, e := range s.events {
 		if id == "" || e.PackageID == id {
-			cp := e
-			if e.Payload != nil {
-				cp.Payload = make(map[string]any, len(e.Payload))
-				for key, value := range e.Payload {
-					cp.Payload[key] = value
-				}
-			}
-			out = append(out, cp)
+			out = append(out, cloneEvent(e))
 		}
 	}
 	return out
@@ -288,5 +281,11 @@ func clonePackage(p *domain.SubtitlePackage) *domain.SubtitlePackage {
 	var x domain.SubtitlePackage
 	_ = json.Unmarshal(b, &x)
 	return &x
+}
+func cloneEvent(e domain.AuditEvent) domain.AuditEvent {
+	b, _ := json.Marshal(e)
+	var x domain.AuditEvent
+	_ = json.Unmarshal(b, &x)
+	return x
 }
 func now() time.Time { return time.Now().UTC() }

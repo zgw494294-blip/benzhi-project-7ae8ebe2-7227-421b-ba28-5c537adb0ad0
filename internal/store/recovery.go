@@ -33,6 +33,8 @@ func (s *Store) ReplayEvents() []domain.AuditEvent {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]domain.AuditEvent, len(s.events))
-	copy(out, s.events)
+	for i, e := range s.events {
+		out[i] = cloneEvent(e)
+	}
 	return out
 }
