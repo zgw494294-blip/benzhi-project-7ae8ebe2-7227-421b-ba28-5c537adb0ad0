@@ -21,7 +21,7 @@ func (s *Store) Query(q PackageQuery) []*domain.SubtitlePackage {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if cached, ok := s.queryCache[q]; ok {
-		return cached
+		return clonePackageSlice(cached)
 	}
 	out := make([]*domain.SubtitlePackage, 0)
 	needle := strings.ToLower(strings.TrimSpace(q.Text))
@@ -54,8 +54,17 @@ func (s *Store) Query(q PackageQuery) []*domain.SubtitlePackage {
 		out = out[:q.Limit]
 	}
 	s.queryCache[q] = out
+	return clonePackageSlice(out)
+}
+
+func clonePackageSlice(in []*domain.SubtitlePackage) []*domain.SubtitlePackage {
+	out := make([]*domain.SubtitlePackage, len(in))
+	for i, p := range in {
+		out[i] = clonePackage(p)
+	}
 	return out
 }
+
 func (s *Store) PackageCountByStatus() map[domain.Status]int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
