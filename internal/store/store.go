@@ -207,11 +207,61 @@ func (s *Store) CommitMany(id, key string, expected int, p *domain.SubtitlePacka
 	if len(records) == 0 {
 		return fmt.Errorf("提交事件不能为空")
 	}
+	// Capture the complete pre-commit in-memory state so any persistence
+	// failure can be rolled back atomically. The event log is append-only and
+	// fsynced before the snapshot is written, so a failed snapshot write would
+	// otherwise leave durable events that the old snapshot cannot match on
+	// restart. We record the event file length to truncate the appended bytes
+	// and restore the prior projection, version, sequence and idempotency.
+	var prevPackage *domain.SubtitlePackage
+	if old, ok := s.snapshot.Packages[id]; ok {
+		prevPackage = clonePackage(old)
+	}
+	prevEventsLen := len(s.events)
+	prevSequence := s.snapshot.Sequence
+	var prevIdemRaw json.RawMessage
+	hadIdem := false
+	if key != "" {
+		if raw, ok := s.idem[key]; ok {
+			prevIdemRaw = raw
+			hadIdem = true
+		}
+	}
+	var prevEventFileSize int64
+	if fi, err := s.eventFile.Stat(); err == nil {
+		prevEventFileSize = fi.Size()
+	}
+	rollback := func(persistErr error) error {
+		if prevPackage != nil {
+			s.snapshot.Packages[id] = prevPackage
+		} else {
+			delete(s.snapshot.Packages, id)
+		}
+		if prevEventsLen <= len(s.events) {
+			s.events = s.events[:prevEventsLen]
+		}
+		s.snapshot.Sequence = prevSequence
+		if key != "" {
+			if hadIdem {
+				s.idem[key] = prevIdemRaw
+				s.snapshot.Idempotency[key] = prevIdemRaw
+			} else {
+				delete(s.idem, key)
+				delete(s.snapshot.Idempotency, key)
+			}
+		}
+		if prevEventFileSize > 0 && s.eventFile != nil {
+			if truncErr := s.eventFile.Truncate(prevEventFileSize); truncErr == nil {
+				_ = s.eventFile.Sync()
+			}
+		}
+		return persistErr
+	}
 	s.snapshot.Packages[id] = clonePackage(p)
 	for _, record := range records {
 		e := s.newEvent(id, record.Type, record.Actor, record.Payload)
 		if err := s.appendEvent(e); err != nil {
-			return err
+			return rollback(err)
 		}
 	}
 	if key != "" {
@@ -220,7 +270,7 @@ func (s *Store) CommitMany(id, key string, expected int, p *domain.SubtitlePacka
 		s.snapshot.Idempotency[key] = raw
 	}
 	if err := s.writeSnapshot(); err != nil {
-		return nil
+		return rollback(fmt.Errorf("快照持久化失败: %w", err))
 	}
 	return nil
 }
