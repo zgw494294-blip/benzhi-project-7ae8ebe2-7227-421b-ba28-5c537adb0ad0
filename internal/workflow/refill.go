@@ -39,7 +39,9 @@ func (s *Service) AddManualFinding(id string, req ManualFindingRequest, actor st
 	if !ok {
 		return nil, fmt.Errorf("字幕包不存在")
 	}
-	if s.Store.HasIdempotency(req.IdempotencyKey) {
+	if replayed, err := s.Store.CheckIdempotency(req.IdempotencyKey, id, domain.EventManualFindingAdded); err != nil {
+		return nil, err
+	} else if replayed {
 		return p, nil
 	}
 	ctx := CommandContext{Actor: actor, Role: req.Role, ExpectedVersion: req.ExpectedVersion, IdempotencyKey: req.IdempotencyKey}

@@ -72,7 +72,9 @@ func (s *Service) Prepare(id string, req CueRequest, actor string) (*domain.Subt
 	if !ok {
 		return nil, fmt.Errorf("字幕包不存在")
 	}
-	if s.Store.HasIdempotency(req.IdempotencyKey) {
+	if replayed, err := s.Store.CheckIdempotency(req.IdempotencyKey, id, domain.EventCuesPrepared); err != nil {
+		return nil, err
+	} else if replayed {
 		return p, nil
 	}
 	if p.Status != domain.StatusDraft {
@@ -106,7 +108,9 @@ func (s *Service) Check(id string, expected int, key, actor string) (*domain.Sub
 	if !ok {
 		return nil, fmt.Errorf("字幕包不存在")
 	}
-	if s.Store.HasIdempotency(key) {
+	if replayed, err := s.Store.CheckIdempotency(key, id, domain.EventQualityChecked); err != nil {
+		return nil, err
+	} else if replayed {
 		return p, nil
 	}
 	if p.Status != domain.StatusPrepared && !(p.Status == domain.StatusReviewing && len(p.Revisions) > 0) {
@@ -185,7 +189,9 @@ func (s *Service) BatchDisposition(id string, expected int, key, actor, role str
 	if !ok {
 		return nil, fmt.Errorf("字幕包不存在")
 	}
-	if s.Store.HasIdempotency(key) {
+	if replayed, err := s.Store.CheckIdempotency(key, id, domain.EventFindingDispositioned); err != nil {
+		return nil, err
+	} else if replayed {
 		return p, nil
 	}
 	if p.Status != domain.StatusReviewing {
@@ -248,7 +254,9 @@ func (s *Service) SubmitReview(id string, expected int, key, actor string) (*dom
 	if !ok {
 		return nil, fmt.Errorf("字幕包不存在")
 	}
-	if s.Store.HasIdempotency(key) {
+	if replayed, err := s.Store.CheckIdempotency(key, id, domain.EventReviewSubmitted); err != nil {
+		return nil, err
+	} else if replayed {
 		return p, nil
 	}
 	if p.Status != domain.StatusReviewing {
@@ -288,7 +296,9 @@ func (s *Service) Revise(id string, expected int, key, reason, actor string, cha
 	if !ok {
 		return nil, fmt.Errorf("字幕包不存在")
 	}
-	if s.Store.HasIdempotency(key) {
+	if replayed, err := s.Store.CheckIdempotency(key, id, domain.EventRevisionCreated); err != nil {
+		return nil, err
+	} else if replayed {
 		return p, nil
 	}
 	if err := ensureExpected(p.Version, expected); err != nil {
@@ -353,7 +363,9 @@ func (s *Service) FreezeConfirmed(id string, expected int, expectedChecksum, key
 	if !ok {
 		return nil, fmt.Errorf("字幕包不存在")
 	}
-	if s.Store.HasIdempotency(key) {
+	if replayed, err := s.Store.CheckIdempotency(key, id, domain.EventMasterFrozen); err != nil {
+		return nil, err
+	} else if replayed {
 		return p, nil
 	}
 	if err := ensureExpected(p.Version, expected); err != nil {
@@ -393,7 +405,9 @@ func (s *Service) Deliver(id string, expected int, key, actor string) (*domain.S
 	if !ok {
 		return nil, fmt.Errorf("字幕包不存在")
 	}
-	if s.Store.HasIdempotency(key) {
+	if replayed, err := s.Store.CheckIdempotency(key, id, domain.EventCredentialIssued); err != nil {
+		return nil, err
+	} else if replayed {
 		return p, nil
 	}
 	if p.Status != domain.StatusFrozen || p.Master == nil {

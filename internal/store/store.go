@@ -168,6 +168,39 @@ func (s *Store) Events(id string) []domain.AuditEvent {
 	return out
 }
 
+// idempotencyRecord captures the request that first reserved an idempotency key,
+// so later attempts to reuse the same key for a different package or action can
+// be rejected instead of being mistaken for a legal replay.
+type idempotencyRecord struct {
+	PackageID string `json:"packageId"`
+	Action    string `json:"action"`
+	Result    string `json:"result"`
+	Error     string `json:"error,omitempty"`
+}
+
+func (s *Store) CheckIdempotency(key, packageID, action string) (replayed bool, err error) {
+	if key == "" {
+		return false, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	raw, ok := s.idem[key]
+	if !ok {
+		return false, nil
+	}
+	var prior idempotencyRecord
+	if e := json.Unmarshal(raw, &prior); e != nil {
+		return false, fmt.Errorf("幂等记录损坏")
+	}
+	if prior.Error != "" {
+		return false, errors.New(prior.Error)
+	}
+	if prior.PackageID != packageID || prior.Action != action {
+		return false, fmt.Errorf("幂等键已用于其他请求")
+	}
+	return true, nil
+}
+
 func (s *Store) HasIdempotency(key string) bool {
 	if key == "" {
 		return false
@@ -185,14 +218,21 @@ func (s *Store) Commit(id, key string, expected int, p *domain.SubtitlePackage, 
 func (s *Store) CommitMany(id, key string, expected int, p *domain.SubtitlePackage, records []EventRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	action := ""
+	if len(records) > 0 {
+		action = records[0].Type
+	}
 	if key != "" {
 		if raw, ok := s.idem[key]; ok {
-			var prior struct {
-				Error string `json:"error"`
+			var prior idempotencyRecord
+			if e := json.Unmarshal(raw, &prior); e != nil {
+				return fmt.Errorf("幂等记录损坏")
 			}
-			_ = json.Unmarshal(raw, &prior)
 			if prior.Error != "" {
 				return errors.New(prior.Error)
+			}
+			if prior.PackageID != id || prior.Action != action {
+				return fmt.Errorf("幂等键已用于其他请求")
 			}
 			return nil
 		}
@@ -215,7 +255,7 @@ func (s *Store) CommitMany(id, key string, expected int, p *domain.SubtitlePacka
 		}
 	}
 	if key != "" {
-		raw, _ := json.Marshal(map[string]string{"result": "ok"})
+		raw, _ := json.Marshal(idempotencyRecord{PackageID: id, Action: action, Result: "ok"})
 		s.idem[key] = raw
 		s.snapshot.Idempotency[key] = raw
 	}
