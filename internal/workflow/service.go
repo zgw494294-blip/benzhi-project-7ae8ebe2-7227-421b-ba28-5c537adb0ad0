@@ -69,6 +69,13 @@ func (s *Service) PreviewImport(id, raw string) ([]domain.CaptionCue, error) {
 	return p.Cues, nil
 }
 func (s *Service) Prepare(id string, req CueRequest, actor string) (*domain.SubtitlePackage, error) {
+	return s.PrepareContext(context.Background(), id, req, actor)
+}
+
+func (s *Service) PrepareContext(ctx context.Context, id string, req CueRequest, actor string) (*domain.SubtitlePackage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("请求已取消")
+	}
 	p, ok := s.Store.Get(id)
 	if !ok {
 		return nil, fmt.Errorf("字幕包不存在")
@@ -96,15 +103,14 @@ func (s *Service) Prepare(id string, req CueRequest, actor string) (*domain.Subt
 	if err := domain.Transition(p, domain.StatusPrepared); err != nil {
 		return nil, err
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("请求已取消")
+	}
 	if err := s.Store.Commit(id, req.IdempotencyKey, req.ExpectedVersion, p, domain.EventCuesPrepared, actor, map[string]any{"cueCount": len(p.Cues)}); err != nil {
 		return nil, err
 	}
 	stored, _ := s.Store.Get(id)
 	return stored, nil
-}
-
-func (s *Service) PrepareContext(_ context.Context, id string, req CueRequest, actor string) (*domain.SubtitlePackage, error) {
-	return s.Prepare(id, req, actor)
 }
 
 func (s *Service) Check(id string, expected int, key, actor string) (*domain.SubtitlePackage, error) {
