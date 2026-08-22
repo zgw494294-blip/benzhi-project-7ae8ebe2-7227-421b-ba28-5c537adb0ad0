@@ -20,9 +20,10 @@ import (
 )
 
 type Server struct {
-	App  *workflow.Service
-	mux  *http.ServeMux
-	http *http.Server
+	App          *workflow.Service
+	mux          *http.ServeMux
+	http         *http.Server
+	currentActor string
 }
 
 func New(app *workflow.Service) *Server {
@@ -30,7 +31,14 @@ func New(app *workflow.Service) *Server {
 	s.routes()
 	return s
 }
-func (s *Server) Handler() http.Handler { return security(s.mux) }
+func (s *Server) Handler() http.Handler { return security(s.captureActor(s.mux)) }
+func (s *Server) captureActor(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.currentActor = actor(r)
+		next.ServeHTTP(w, r)
+	})
+}
+func (s *Server) requestActor() string { return s.currentActor }
 func (s *Server) ListenAndServe(addr string) error {
 	s.http = &http.Server{Addr: addr, Handler: s.Handler(), ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second}
 	return s.http.ListenAndServe()
@@ -104,7 +112,7 @@ func (s *Server) packages(w http.ResponseWriter, r *http.Request) {
 		if !decode(w, r, &req) {
 			return
 		}
-		p, err := s.App.Create(req, actor(r))
+		p, err := s.App.Create(req, s.requestActor())
 		if err != nil {
 			fail(w, 400, err)
 			return
@@ -221,7 +229,7 @@ func (s *Server) packageAction(w http.ResponseWriter, r *http.Request) {
 			ExpectedVersion: req.ExpectedVersion, IdempotencyKey: req.IdempotencyKey, Role: req.Role,
 			CueID: req.CueID, StartMs: req.StartMs, EndMs: req.EndMs, RuleCode: req.RuleCode,
 			Severity: req.Severity, Message: req.Message,
-		}, actor(r))
+		}, s.requestActor())
 		if err != nil {
 			fail(w, 400, err)
 			return
@@ -303,21 +311,21 @@ func (s *Server) packageAction(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, err)
 			return
 		}
-		p, err = s.App.Prepare(id, workflow.CueRequest{ExpectedVersion: body.ExpectedVersion, IdempotencyKey: body.IdempotencyKey, Cues: body.Cues}, actor(r))
+		p, err = s.App.Prepare(id, workflow.CueRequest{ExpectedVersion: body.ExpectedVersion, IdempotencyKey: body.IdempotencyKey, Cues: body.Cues}, s.requestActor())
 	case "quality-check":
-		p, err = s.App.Check(id, body.ExpectedVersion, body.IdempotencyKey, actor(r))
+		p, err = s.App.Check(id, body.ExpectedVersion, body.IdempotencyKey, s.requestActor())
 	case "finding":
-		p, err = s.App.Disposition(id, body.FindingID, body.Disposition, body.ResolutionNote, actor(r))
+		p, err = s.App.Disposition(id, body.FindingID, body.Disposition, body.ResolutionNote, s.requestActor())
 	case "findings", "finding-batch":
-		p, err = s.App.BatchDisposition(id, body.ExpectedVersion, body.IdempotencyKey, actor(r), body.Role, body.Findings)
+		p, err = s.App.BatchDisposition(id, body.ExpectedVersion, body.IdempotencyKey, s.requestActor(), body.Role, body.Findings)
 	case "review":
-		p, err = s.App.SubmitReview(id, body.ExpectedVersion, body.IdempotencyKey, actor(r))
+		p, err = s.App.SubmitReview(id, body.ExpectedVersion, body.IdempotencyKey, s.requestActor())
 	case "revisions":
-		p, err = s.App.Revise(id, body.ExpectedVersion, body.IdempotencyKey, body.Reason, actor(r), body.Changes, body.FindingIDs)
+		p, err = s.App.Revise(id, body.ExpectedVersion, body.IdempotencyKey, body.Reason, s.requestActor(), body.Changes, body.FindingIDs)
 	case "freeze":
-		p, err = s.App.FreezeConfirmed(id, body.ExpectedVersion, body.ExpectedChecksum, body.IdempotencyKey, actor(r))
+		p, err = s.App.FreezeConfirmed(id, body.ExpectedVersion, body.ExpectedChecksum, body.IdempotencyKey, s.requestActor())
 	case "deliver":
-		p, err = s.App.Deliver(id, body.ExpectedVersion, body.IdempotencyKey, actor(r))
+		p, err = s.App.Deliver(id, body.ExpectedVersion, body.IdempotencyKey, s.requestActor())
 	case "credential":
 		p, ok := s.App.Store.Get(id)
 		if !ok {
