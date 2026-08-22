@@ -162,7 +162,14 @@ func (s *Store) Events(id string) []domain.AuditEvent {
 	var out []domain.AuditEvent
 	for _, e := range s.events {
 		if id == "" || e.PackageID == id {
-			out = append(out, e)
+			cp := e
+			if e.Payload != nil {
+				cp.Payload = make(map[string]any, len(e.Payload))
+				for key, value := range e.Payload {
+					cp.Payload[key] = value
+				}
+			}
+			out = append(out, cp)
 		}
 	}
 	return out
