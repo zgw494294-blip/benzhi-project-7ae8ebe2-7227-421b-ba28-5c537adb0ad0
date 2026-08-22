@@ -74,7 +74,7 @@ func (s *Store) loadSnapshot() error {
 		return err
 	}
 	if err = json.Unmarshal(b, &s.snapshot); err != nil {
-		return fmt.Errorf("快照损坏: %w", err)
+		return s.loadTemporarySnapshot(err)
 	}
 	if s.snapshot.SchemaVersion != 1 {
 		return fmt.Errorf("不支持的快照版本")
@@ -87,6 +87,26 @@ func (s *Store) loadSnapshot() error {
 	}
 	s.idem = s.snapshot.Idempotency
 	s.snapshotLoaded = true
+	return nil
+}
+
+func (s *Store) loadTemporarySnapshot(primaryErr error) error {
+	b, err := os.ReadFile(filepath.Join(s.dir, "snapshot.tmp"))
+	if err != nil {
+		return fmt.Errorf("快照损坏: %w", primaryErr)
+	}
+	var fallback Snapshot
+	if err := json.Unmarshal(b, &fallback); err != nil {
+		return fmt.Errorf("快照及临时快照均损坏: %w", primaryErr)
+	}
+	if fallback.Packages == nil {
+		fallback.Packages = map[string]*domain.SubtitlePackage{}
+	}
+	if fallback.Idempotency == nil {
+		fallback.Idempotency = map[string]json.RawMessage{}
+	}
+	s.snapshot = fallback
+	s.idem = map[string]json.RawMessage{}
 	return nil
 }
 func (s *Store) loadEvents() error {
