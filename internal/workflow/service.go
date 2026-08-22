@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -101,6 +102,11 @@ func (s *Service) Prepare(id string, req CueRequest, actor string) (*domain.Subt
 	stored, _ := s.Store.Get(id)
 	return stored, nil
 }
+
+func (s *Service) PrepareContext(_ context.Context, id string, req CueRequest, actor string) (*domain.SubtitlePackage, error) {
+	return s.Prepare(id, req, actor)
+}
+
 func (s *Service) Check(id string, expected int, key, actor string) (*domain.SubtitlePackage, error) {
 	p, ok := s.Store.Get(id)
 	if !ok {

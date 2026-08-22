@@ -303,7 +303,7 @@ func (s *Server) packageAction(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, err)
 			return
 		}
-		p, err = s.App.Prepare(id, workflow.CueRequest{ExpectedVersion: body.ExpectedVersion, IdempotencyKey: body.IdempotencyKey, Cues: body.Cues}, actor(r))
+		p, err = s.App.PrepareContext(r.Context(), id, workflow.CueRequest{ExpectedVersion: body.ExpectedVersion, IdempotencyKey: body.IdempotencyKey, Cues: body.Cues}, actor(r))
 	case "quality-check":
 		p, err = s.App.Check(id, body.ExpectedVersion, body.IdempotencyKey, actor(r))
 	case "finding":
