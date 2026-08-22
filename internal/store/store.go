@@ -60,8 +60,10 @@ func Open(dir string) (*Store, error) {
 func (s *Store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.eventFile != nil {
-		return s.eventFile.Close()
+	f := s.eventFile
+	s.eventFile = nil
+	if f != nil {
+		return f.Close()
 	}
 	return nil
 }
