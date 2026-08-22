@@ -309,7 +309,7 @@ func (s *Server) packageAction(w http.ResponseWriter, r *http.Request) {
 	case "finding":
 		p, err = s.App.Disposition(id, body.FindingID, body.Disposition, body.ResolutionNote, actor(r))
 	case "findings", "finding-batch":
-		p, err = s.App.BatchDisposition(id, body.ExpectedVersion, body.IdempotencyKey, actor(r), body.Role, body.Findings)
+		p, err = s.App.BatchDispositionContext(r.Context(), id, body.ExpectedVersion, body.IdempotencyKey, actor(r), body.Role, body.Findings)
 	case "review":
 		p, err = s.App.SubmitReview(id, body.ExpectedVersion, body.IdempotencyKey, actor(r))
 	case "revisions":

@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -178,6 +179,10 @@ func (s *Service) Disposition(id, findingID, disposition, note, actor string) (*
 }
 
 func (s *Service) BatchDisposition(id string, expected int, key, actor, role string, items []FindingDisposition) (*domain.SubtitlePackage, error) {
+	return s.BatchDispositionContext(context.Background(), id, expected, key, actor, role, items)
+}
+
+func (s *Service) BatchDispositionContext(ctx context.Context, id string, expected int, key, actor, role string, items []FindingDisposition) (result *domain.SubtitlePackage, err error) {
 	if role != "" && !domainRoleAllows(role, "finding") {
 		return nil, fmt.Errorf("角色%s无权执行finding", role)
 	}
@@ -234,8 +239,19 @@ func (s *Service) BatchDisposition(id string, expected int, key, actor, role str
 	p.Version++
 	p.UpdatedAt = t
 	records := make([]store.EventRecord, 0, len(items))
+	canceled := false
+	defer func() {
+		if canceled && len(records) > 0 {
+			_ = s.Store.CommitMany(id, key, expected, p, records)
+		}
+	}()
 	for _, item := range items {
-		records = append(records, store.EventRecord{Type: domain.EventFindingDispositioned, Actor: actor, Payload: map[string]any{"findingId": item.FindingID, "disposition": item.Disposition, "resolutionNote": strings.TrimSpace(item.ResolutionNote)}})
+		record := store.EventRecord{Type: domain.EventFindingDispositioned, Actor: actor, Payload: map[string]any{"findingId": item.FindingID, "disposition": item.Disposition, "resolutionNote": strings.TrimSpace(item.ResolutionNote)}}
+		records = append(records, record)
+		if cancelErr := ctx.Err(); cancelErr != nil {
+			canceled = true
+			return nil, cancelErr
+		}
 	}
 	if err := s.Store.CommitMany(id, key, expected, p, records); err != nil {
 		return nil, err
