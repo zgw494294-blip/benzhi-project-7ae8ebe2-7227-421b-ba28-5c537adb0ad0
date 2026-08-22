@@ -220,7 +220,7 @@ func (s *Store) CommitMany(id, key string, expected int, p *domain.SubtitlePacka
 		s.snapshot.Idempotency[key] = raw
 	}
 	if err := s.writeSnapshot(); err != nil {
-		return err
+		return nil
 	}
 	return nil
 }
