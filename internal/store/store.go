@@ -28,6 +28,7 @@ type Store struct {
 	snapshot       Snapshot
 	events         []domain.AuditEvent
 	idem           map[string]json.RawMessage
+	queryCache     map[PackageQuery][]*domain.SubtitlePackage
 	eventFile      *os.File
 	snapshotLoaded bool
 }
@@ -42,7 +43,7 @@ func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
-	s := &Store{dir: dir, idem: map[string]json.RawMessage{}, snapshot: Snapshot{SchemaVersion: 1, Packages: map[string]*domain.SubtitlePackage{}, Idempotency: map[string]json.RawMessage{}}}
+	s := &Store{dir: dir, idem: map[string]json.RawMessage{}, queryCache: map[PackageQuery][]*domain.SubtitlePackage{}, snapshot: Snapshot{SchemaVersion: 1, Packages: map[string]*domain.SubtitlePackage{}, Idempotency: map[string]json.RawMessage{}}}
 	if err := s.loadSnapshot(); err != nil {
 		return nil, err
 	}
@@ -222,6 +223,7 @@ func (s *Store) CommitMany(id, key string, expected int, p *domain.SubtitlePacka
 	if err := s.writeSnapshot(); err != nil {
 		return err
 	}
+	clear(s.queryCache)
 	return nil
 }
 

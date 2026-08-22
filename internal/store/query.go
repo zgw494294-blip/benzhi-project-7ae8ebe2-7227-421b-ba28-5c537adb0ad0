@@ -20,6 +20,9 @@ const DefaultPackageLimit = 50
 func (s *Store) Query(q PackageQuery) []*domain.SubtitlePackage {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if cached, ok := s.queryCache[q]; ok {
+		return cached
+	}
 	out := make([]*domain.SubtitlePackage, 0)
 	needle := strings.ToLower(strings.TrimSpace(q.Text))
 	for _, p := range s.snapshot.Packages {
@@ -45,11 +48,12 @@ func (s *Store) Query(q PackageQuery) []*domain.SubtitlePackage {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
 	if q.LimitSet && q.Limit == 0 {
-		return []*domain.SubtitlePackage{}
+		out = []*domain.SubtitlePackage{}
 	}
 	if q.Limit > 0 && len(out) > q.Limit {
-		return out[:q.Limit]
+		out = out[:q.Limit]
 	}
+	s.queryCache[q] = out
 	return out
 }
 func (s *Store) PackageCountByStatus() map[domain.Status]int {
