@@ -3,15 +3,22 @@ package workflow
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"subtitleqc/internal/domain"
 	"subtitleqc/internal/store"
 )
 
-type Service struct{ Store *store.Store }
+type Service struct {
+	Store     *store.Store
+	reportMu  sync.Mutex
+	reportMap map[string]WorkbenchReport
+}
 
-func New(s *store.Store) *Service { return &Service{Store: s} }
+func New(s *store.Store) *Service {
+	return &Service{Store: s, reportMap: map[string]WorkbenchReport{}}
+}
 
 type CreateRequest struct {
 	ProgramTitle     string `json:"programTitle"`
